@@ -388,19 +388,41 @@ void peek_fcontext(void *arg, void (*f_peek)(void *), fcontext_t *p_target_ctx);
 .type peek_fcontext,@function
 .align 16
 peek_fcontext:
+    .cfi_startproc
     /* temporarily move RSP (pointing to context-data) to R12 (callee-saved) */
     pushq  %r12
+    .cfi_adjust_cfa_offset 8
+    .cfi_rel_offset %r12, 0
     movq   %rsp, %r12
     /* restore RSP (pointing to context-data) from p_target_ctx (RDX) */
     movq   (%rdx), %rsp
+    /* Describe this frame as the suspended context (fpu|r12..rbp|RIP) so
+     * unwinders continue into the target's own call chain. */
+    .cfi_def_cfa %rsp, 0x40
+    .cfi_offset %rbp, -0x10
+    .cfi_offset %rbx, -0x18
+    .cfi_offset %r15, -0x20
+    .cfi_offset %r14, -0x28
+    .cfi_offset %r13, -0x30
+    .cfi_offset %r12, -0x38
     /* RSP is already 16-byte aligned, so we can call f_peek (RSI) here.
      * arg is passed as the first argument (RDI). */
     callq *%rsi
     /* restore callee-saved registers. */
     movq   %r12, %rsp
+    .cfi_def_cfa %rsp, 16
+    .cfi_restore %rbp
+    .cfi_restore %rbx
+    .cfi_restore %r15
+    .cfi_restore %r14
+    .cfi_restore %r13
+    .cfi_offset %r12, -16
     popq   %r12
+    .cfi_adjust_cfa_offset -8
+    .cfi_restore %r12
     /* return */
     ret
+    .cfi_endproc
 .size peek_fcontext,.-peek_fcontext
 
 /* mark that we don't need executable stack. */
